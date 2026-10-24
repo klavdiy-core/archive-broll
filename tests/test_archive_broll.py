@@ -40,6 +40,14 @@ META = {
         "files": [{"name": "set1.mp3", "format": "VBR MP3", "source": "derivative",
                    "size": str(len(VIDEO)), "md5": VIDEO_MD5}],
     },
+    # a real 78 rpm item (found by an independent tester, 24.10): its file name is illegal on Windows
+    "fats": {
+        "metadata": {"identifier": "fats", "title": "4. Bond Street", "creator": ['"FATS" WALLER', "Max Lewin"],
+                     "year": "1937", "collection": ["78rpm"], "mediatype": "audio",
+                     "licenseurl": "https://creativecommons.org/publicdomain/mark/1.0/"},
+        "files": [{"name": '4. Bond Street - "FATS" WALLER - Max Lewin.mp3', "format": "VBR MP3",
+                   "source": "derivative", "size": str(len(VIDEO)), "md5": VIDEO_MD5}],
+    },
 }
 
 
@@ -136,6 +144,22 @@ class Get(unittest.TestCase):
             ab.get("LightOfYourL", out=d, fmt="mp4", net=FakeNet())
             with open(os.path.join(d, "credits.json")) as f:
                 self.assertEqual(len(json.load(f)), 1)
+
+    def test_a_file_name_illegal_on_windows_is_saved_under_a_safe_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            e = ab.get("fats", out=d, fmt="mp3", net=FakeNet())
+            self.assertTrue(os.path.exists(os.path.join(d, e["file"])))
+            self.assertFalse(any(ch in e["file"] for ch in '<>:"/\\|?*'))
+            self.assertEqual(e["remote_file"], '4. Bond Street - "FATS" WALLER - Max Lewin.mp3')
+            self.assertIn("%22FATS%22", e["file_url"])               # the download still asks for the real name
+
+    def test_safe_name(self):
+        self.assertEqual(ab.safe_name('a:b?c*"d".mp3'), "a_b_c__d_.mp3")
+        self.assertEqual(ab.safe_name("CON.mp3"), "_CON.mp3")
+        self.assertEqual(ab.safe_name("x. "), "x")
+
+    def test_creator_list_reads_as_names(self):
+        self.assertEqual(ab.creator_text(META["fats"]["metadata"]), '"FATS" WALLER, Max Lewin')
 
     def test_unknown_license_is_refused_by_default(self):
         with tempfile.TemporaryDirectory() as d:
