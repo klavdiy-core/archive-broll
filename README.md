@@ -14,7 +14,7 @@ The archive.org API is free and needs no key, so finding B-roll is easy: old ind
 - **filters by license**, on the server and again on your machine. The default `open` keeps only items that state Public Domain, CC0, CC BY or CC BY-SA. `--license nc` adds non-commercial; `--license any` adds no-derivatives and "not stated".
 - **get** downloads the file you pick, **checks its MD5** against the archive's record (a broken download is deleted), and appends the item to `credits.json` and `CREDITS.md`.
 - **never guesses a license.** An item that states none is refused by default. If you take it anyway, its credit line says **LICENSE NOT STATED, check before you publish**.
-- **flags the loudest lies.** Licenses on archive.org are set by whoever uploaded the item and are not verified. A Public Domain claim on a work from 1978 or later (by its year or a year in its title) is marked **CHECK**: in the US such works are not public domain by age. Searching "ocean" turns up a 2016 Godzilla film marked "Public Domain Mark". That flag is for cases like this.
+- **flags the loudest lies.** Licenses on archive.org are set by whoever uploaded the item and are not verified. A Public Domain claim on a work from 1978 or later (by its year or a year in its title) is marked **CHECK**: in the US such works are not public domain by age. Searching "ocean" turns up a 2016 Godzilla film whose item ([`ShinGodzilla_201811`](https://archive.org/metadata/ShinGodzilla_201811)) carries `licenseurl: publicdomain/mark/1.0`, and the 1984 film *Threads* ([`threads_201712`](https://archive.org/metadata/threads_201712)) carries the same. That flag is for cases like this.
 
 Standard library only, Python 3.8+.
 
