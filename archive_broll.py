@@ -241,6 +241,20 @@ def _add_credit(out, entry):
     write_credits(out)
 
 
+RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+
+
+def safe_name(name):
+    """A local file name that works on Windows, macOS and Linux (78 rpm items carry quotes and colons)."""
+    s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).rstrip(" .")
+    return "_" + s if s.split(".")[0].upper() in RESERVED else (s or "_")
+
+
+def creator_text(md):
+    c = md.get("creator", "")
+    return ", ".join(c) if isinstance(c, list) else str(c or "")
+
+
 def get(identifier, out=".", fmt=None, name=None, all_files=False, license="open", net=None):
     """Download one file of an item (or all of the chosen format) and record its credit. Returns the last entry."""
     meta = info(identifier, net)
@@ -258,7 +272,7 @@ def get(identifier, out=".", fmt=None, name=None, all_files=False, license="open
     os.makedirs(out, exist_ok=True)
     entry = None
     for f in files:
-        local = os.path.join(out, os.path.basename(f["name"]))
+        local = os.path.join(out, safe_name(os.path.basename(f["name"])))
         url = f"{API}/download/{quote(identifier)}/{quote(f['name'])}"
         part = local + ".part"
         _stream(url, part, net)
@@ -274,11 +288,12 @@ def get(identifier, out=".", fmt=None, name=None, all_files=False, license="open
         entry = {
             "identifier": identifier,
             "title": _first(md.get("title")) or identifier,
-            "creator": ", ".join(md["creator"]) if isinstance(md.get("creator"), list) else md.get("creator", ""),
+            "creator": creator_text(md),
             "year": _first(md.get("year")) or str(_first(md.get("date")))[:4],
             "collection": md.get("collection"),
             "item_url": f"{API}/details/{identifier}",
-            "file": os.path.basename(f["name"]),
+            "file": os.path.basename(local),
+            "remote_file": os.path.basename(f["name"]),
             "file_url": url,
             "format": f.get("format"),
             "length_s": f.get("length"),
@@ -357,7 +372,7 @@ def main(argv=None):
             lic = classify(md)
             yr = str(_first(md.get("year")) or str(_first(md.get("date")))[:4]).strip()
             print(f"{_first(md.get('title'))}" + (f"  ({yr})" if yr.isdigit() else ""))
-            print(f"creator  {md.get('creator', '')}")
+            print(f"creator  {creator_text(md)}")
             print(f"license  {lic.name} [{lic.kind}] {lic.url}  (stated by the uploader, not verified)"
                   + ("  CHECK: PD claim on a 1978+ work" if suspicious(md, lic) else ""))
             print(f"page     {API}/details/{a.identifier}")
