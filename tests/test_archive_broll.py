@@ -40,6 +40,14 @@ META = {
         "files": [{"name": "set1.mp3", "format": "VBR MP3", "source": "derivative",
                    "size": str(len(VIDEO)), "md5": VIDEO_MD5}],
     },
+    # a real date form (Third Avenue El, found by an independent tester 25.10): the year was lost from the credit
+    "ThirdAve": {
+        "metadata": {"identifier": "ThirdAve", "title": "Third Avenue El", "creator": "Carson Davidson",
+                     "date": "ca. 1950s", "collection": ["prelinger"], "mediatype": "movies",
+                     "licenseurl": "http://creativecommons.org/licenses/publicdomain/"},
+        "files": [{"name": "ThirdAve.mp4", "format": "h.264", "source": "derivative",
+                   "size": str(len(VIDEO)), "md5": VIDEO_MD5}],
+    },
     # a real 78 rpm item (found by an independent tester, 24.10): its file name is illegal on Windows
     "fats": {
         "metadata": {"identifier": "fats", "title": "4. Bond Street", "creator": ['"FATS" WALLER', "Max Lewin"],
@@ -67,10 +75,15 @@ class FakeNet:
         if u.path == "/advancedsearch.php":
             q = parse_qs(u.query)
             self.last_query = q["q"][0]
-            docs = [{"identifier": "LightOfYourL", "title": "Light Of Your Life, A", "year": 1949,
-                     "licenseurl": "http://creativecommons.org/licenses/publicdomain/"},
-                    {"identifier": "rptreesfortomorrow", "title": "Trees For Tomorrow"}]
-            return json.dumps({"response": {"numFound": 2, "docs": docs}}).encode()
+            page = int(q.get("page", ["1"])[0])
+            pd = "http://creativecommons.org/licenses/publicdomain/"
+            every = [{"identifier": "LightOfYourL", "title": "Light Of Your Life, A", "year": 1949, "licenseurl": pd},
+                     {"identifier": "rptreesfortomorrow", "title": "Trees For Tomorrow"},
+                     {"identifier": "OtherPd", "title": "Another Film", "year": 1950, "licenseurl": pd},
+                     {"identifier": "NoLicense2", "title": "No License"}]
+            rows = int(q.get("rows", ["50"])[0])
+            docs = every[(page - 1) * rows: page * rows]                       # paged like the real API
+            return json.dumps({"response": {"numFound": len(every), "docs": docs}}).encode()
         if u.path.startswith("/metadata/"):
             return json.dumps(META[u.path.split("/")[2]]).encode()
         if u.path.startswith("/download/"):
@@ -116,11 +129,28 @@ class Search(unittest.TestCase):
         self.assertIn("collection:(prelinger)", net.last_query)
         self.assertIn("licenseurl:", net.last_query)
         # the server returned an item without a license; it must still be dropped
-        self.assertEqual([h["identifier"] for h in hits], ["LightOfYourL"])
+        self.assertEqual([h["identifier"] for h in hits], ["LightOfYourL", "OtherPd"])
 
     def test_any_license_keeps_unknown(self):
-        hits = ab.search("trains", collection="films", license="any", net=FakeNet())
+        hits = ab.search("trains", collection="films", license="any", rows=2, net=FakeNet())
         self.assertEqual(len(hits), 2)
+
+    def test_n_results_means_n_when_the_archive_has_them(self):
+        # an outside re-grade (25.10): -n 4 printed 3 rows, because the license recheck ran after the limit
+        hits = ab.search("trains", collection="films", rows=2, net=FakeNet())
+        self.assertEqual([h["identifier"] for h in hits], ["LightOfYourL", "OtherPd"])
+        self.assertEqual(len(ab.search("trains", rows=9, net=FakeNet())), 2)       # fewer exist: no endless paging
+
+    def test_only_items_with_a_video_or_audio_file_are_searched(self):
+        # PanamaCa1912 has only metadata files: it was listed, then `get` failed with "no file matches"
+        net = FakeNet()
+        ab.search("ocean", collection="films", net=net)
+        self.assertIn('format:(', net.last_query)
+        self.assertIn('"h.264"', net.last_query)
+        net = FakeNet()
+        ab.search("harmonica", collection="live", fmt="mp3", net=net)
+        self.assertIn('"VBR MP3"', net.last_query)
+        self.assertNotIn('"h.264"', net.last_query)
 
 
 class Get(unittest.TestCase):
@@ -152,6 +182,12 @@ class Get(unittest.TestCase):
             self.assertFalse(any(ch in e["file"] for ch in '<>:"/\\|?*'))
             self.assertEqual(e["remote_file"], '4. Bond Street - "FATS" WALLER - Max Lewin.mp3')
             self.assertIn("%22FATS%22", e["file_url"])               # the download still asks for the real name
+
+    def test_an_approximate_date_stays_in_the_credit(self):
+        with tempfile.TemporaryDirectory() as d:
+            e = ab.get("ThirdAve", out=d, fmt="mp4", net=FakeNet())
+            self.assertEqual(e["year"], "ca. 1950s")
+            self.assertIn("(ca. 1950s)", read(os.path.join(d, "CREDITS.md")))
 
     def test_safe_name(self):
         self.assertEqual(ab.safe_name('a:b?c*"d".mp3'), "a_b_c__d_.mp3")

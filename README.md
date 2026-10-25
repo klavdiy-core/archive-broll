@@ -11,6 +11,7 @@ The archive.org API is free and needs no key, so finding B-roll is easy: old ind
 ## What it does
 
 - **search** Prelinger films (`-c films`), 78 rpm records (`-c 78`), live concerts (`-c live`) or any collection. A text query also matches Prelinger's **shot lists**, so `search "trains" -c films` finds films that *contain* a train, not just ones named after one.
+- **lists only what you can download**: items with a video or audio file (`-f mp4|mp3|flac|ogg` for one format), and `-n N` gives N rows when the archive has them.
 - **filters by license**, on the server and again on your machine. The default `open` keeps only items that state Public Domain, CC0, CC BY or CC BY-SA. `--license nc` adds non-commercial; `--license any` adds no-derivatives and "not stated".
 - **get** downloads the file you pick, **checks its MD5** against the archive's record (a broken download is deleted), and appends the item to `credits.json` and `CREDITS.md`. A file name that Windows cannot hold (78 rpm records often carry `"FATS" WALLER` in it) is saved under a safe name; `credits.json` keeps the original as `remote_file`.
 - **never guesses a license.** An item that states none is refused by default. If you take it anyway, its credit line says **LICENSE NOT STATED, check before you publish**.
@@ -40,10 +41,10 @@ python archive_broll.py credits broll                           # rebuild CREDIT
 
 ```
 $ python archive_broll.py search "trains" -c films -n 4
-AtThisMo1954                             1954  Public Domain          At This Moment (Part I)
-ArmyNurs1945                             1945  Public Domain          Army Nurse, The
-ThirdAve1950                             1950  Public Domain          Third Avenue El
-FromDawn1937                             1937  Public Domain          From Dawn to Sunset (Part I)
+AtThisMo1954_2                           1954  Public Domain                At This Moment (Part II)
+MorePowe1930                             1930  Public Domain                More Power to You
+GreatRai1942_3                           1942  Public Domain                Great Railroad at Work, A (Part III)
+Chevrole1937_4                           1937  Public Domain                Chevrolet Leader News (Vol. 3, No. 4)
 
 $ python archive_broll.py get harmonica_blues -o broll -f mp3
 saved    broll/harmonica_blues.mp3

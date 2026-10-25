@@ -146,8 +146,14 @@ def suspicious(d, lic):
     return any(y.isdigit() and int(y) >= 1978 for y in years)
 
 
+def _format_query(fmt=None):
+    """Only items that have a file `get` can download: without this, metadata-only items were listed."""
+    wanted = FORMATS[fmt] if fmt else [f for fs in FORMATS.values() for f in fs]
+    return "format:(" + " OR ".join(f'"{f}"' for f in wanted) + ")"
+
+
 def search(text="", collection=None, mediatype=None, license="open", year=None, rows=20, page=1, net=None,
-           sort=None):
+           sort=None, fmt=None, max_pages=5):
     q = []
     if text:
         q.append(f"({text})")
@@ -160,27 +166,45 @@ def search(text="", collection=None, mediatype=None, license="open", year=None, 
         q.append(f"year:[{lo} TO {hi or lo}]")
     if license == "open":
         q.append(OPEN_QUERY)
+    q.append(_format_query(fmt))
     fields = ["identifier", "title", "creator", "year", "date", "mediatype", "licenseurl", "rights", "downloads"]
     order = {"downloads": "downloads desc", "year": "year asc", "relevance": None}[
         sort or ("relevance" if text else "downloads")]
-    params = [("q", " AND ".join(q) or "*:*")] + [("fl[]", f) for f in fields]
-    params += [("sort[]", order)] if order else []
-    params += [("rows", rows), ("page", page), ("output", "json")]
-    data = _json(f"{API}/advancedsearch.php?{urlencode(params)}", net)
-    if "response" not in data:
-        raise DownloadError(f"search failed: {data.get('error') or str(data)[:200]}")
+    base = [("q", " AND ".join(q) or "*:*")] + [("fl[]", f) for f in fields]
+    base += [("sort[]", order)] if order else []
     hits = []
-    for d in data["response"]["docs"]:
-        lic = classify(d)
-        if lic.kind in LEVELS[license]:
-            d["license"], d["license_kind"] = lic.name, lic.kind
-            d["check"] = suspicious(d, lic)
-            hits.append(d)
-    return hits
+    # the license is rechecked here, after the server's page: keep paging until `rows` hits pass, or the archive runs out
+    for p in range(page, page + max_pages):
+        params = base + [("rows", rows), ("page", p), ("output", "json")]
+        data = _json(f"{API}/advancedsearch.php?{urlencode(params)}", net)
+        if "response" not in data:
+            raise DownloadError(f"search failed: {data.get('error') or str(data)[:200]}")
+        docs = data["response"]["docs"]
+        for d in docs:
+            lic = classify(d)
+            if lic.kind in LEVELS[license]:
+                d["license"], d["license_kind"] = lic.name, lic.kind
+                d["check"] = suspicious(d, lic)
+                hits.append(d)
+        if len(hits) >= rows or len(docs) < rows or p * rows >= data["response"].get("numFound", 0):
+            break
+    return hits[:rows]
 
 
 def info(identifier, net=None):
     return _json(f"{API}/metadata/{quote(identifier)}", net)
+
+
+def _year(md):
+    """The year as the item states it: 1949 from a year or a 1949-05-01 date; an approximate date is kept whole
+    (ca. 1950s), never cut to its first four characters."""
+    y = str(_first(md.get("year")) or "").strip()
+    if y:
+        return y
+    date = str(_first(md.get("date")) or "").strip()
+    if re.match(r"\d{4}", date):
+        return date[:4]
+    return date[:20] if re.search(r"\d{4}", date) else ""
 
 
 def _first(v):
@@ -203,7 +227,7 @@ def pick_files(meta, fmt=None, name=None):
 
 def _credit_line(c):
     who = f" — {c['creator']}" if c.get("creator") else ""
-    when = f" ({c['year']})" if str(c.get("year") or "").strip().isdigit() else ""
+    when = f" ({c['year']})" if re.search(r"\d{4}", str(c.get("year") or "")) else ""
     lic = c["license"] + (f" <{c['license_url']}>" if c.get("license_url") else "")
     if c["license_kind"] == "unknown":
         lic = "**LICENSE NOT STATED on the item page: check before you publish.**"
@@ -289,7 +313,7 @@ def get(identifier, out=".", fmt=None, name=None, all_files=False, license="open
             "identifier": identifier,
             "title": _first(md.get("title")) or identifier,
             "creator": creator_text(md),
-            "year": _first(md.get("year")) or str(_first(md.get("date")))[:4],
+            "year": _year(md),
             "collection": md.get("collection"),
             "item_url": f"{API}/details/{identifier}",
             "file": os.path.basename(local),
@@ -334,6 +358,7 @@ def main(argv=None):
     s.add_argument("-l", "--license", choices=LEVELS, default="open")
     s.add_argument("-s", "--sort", choices=["relevance", "downloads", "year"],
                    help="default: relevance with text, downloads without")
+    s.add_argument("-f", "--format", choices=FORMATS, help="only items with a file in this format (default: any video or audio)")
     s.add_argument("--json", action="store_true")
 
     i = sub.add_parser("info", help="show an item: license and downloadable files")
@@ -355,11 +380,12 @@ def main(argv=None):
         sys.stdout.reconfigure(errors="replace")
     try:
         if a.cmd == "search":
-            hits = search(a.text, a.collection, a.mediatype, a.license, a.year, a.rows, a.page, sort=a.sort)
+            hits = search(a.text, a.collection, a.mediatype, a.license, a.year, a.rows, a.page, sort=a.sort,
+                          fmt=a.format)
             if a.json:
                 print(json.dumps(hits, indent=2, ensure_ascii=False))
             for h in hits if not a.json else []:
-                yr = _first(h.get("year")) or str(_first(h.get("date")))[:4]
+                yr = _year(h)
                 flag = "CHECK" if h["check"] else ""
                 print(f"{h['identifier']:<40} {str(yr):<5} {h['license']:<22} {flag:<6}{_first(h.get('title'))[:64]}")
             if not hits:
@@ -370,7 +396,7 @@ def main(argv=None):
             if not md:
                 raise DownloadError(f"no such item: {a.identifier}")
             lic = classify(md)
-            yr = str(_first(md.get("year")) or str(_first(md.get("date")))[:4]).strip()
+            yr = _year(md)
             print(f"{_first(md.get('title'))}" + (f"  ({yr})" if yr.isdigit() else ""))
             print(f"creator  {creator_text(md)}")
             print(f"license  {lic.name} [{lic.kind}] {lic.url}  (stated by the uploader, not verified)"
