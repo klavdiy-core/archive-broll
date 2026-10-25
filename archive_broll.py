@@ -67,7 +67,7 @@ def classify(meta):
         # unknown, and the user decides with --license any.
         from urllib.parse import urlparse
         p = urlparse(u if "://" in u else "https://" + u)
-        host = p.netloc.split(":")[0]
+        host = p.hostname or ""          # not netloc.split(":"): «creativecommons.org:x@evil.example» (Tsaplya)
         segs = [s for s in p.path.split("/") if s]
         if host in CC_HOSTS and segs == ["licenses", "publicdomain"]:
             return License("Public Domain", url, "open")                 # the retired CC PD dedication, common on IA
@@ -294,18 +294,23 @@ def _owners(out):
         return {c["file"]: (c["identifier"], c.get("remote_path") or c.get("remote_file")) for c in json.load(f)}
 
 
-def _local_name(identifier, remote, taken):
+def _local_name(identifier, remote, taken, out="."):
     """The plain file name, unless it already belongs to another item or another path of this one; then it is
     namespaced by identifier (and path), with a number past that. Two items' clip.mp4 used to overwrite each other,
     and credits.json pointed both at the survivor (external review, 25.10)."""
     plain = safe_name(os.path.basename(remote))
     owner = taken.get(plain)
-    if owner is None or owner == (identifier, remote) or owner == (identifier, os.path.basename(remote)):
+    if owner is None and not os.path.exists(os.path.join(out, plain)):
         return plain
+    if owner == (identifier, remote) or owner == (identifier, os.path.basename(remote)):
+        return plain
+    # a file on disk with no credit (the user's own, or a lost credits.json) is somebody's too: never overwritten
+    # (Tsaplya's second review: «plain clip.mp4 OVERWRITTEN»)
     name = safe_name(f"{identifier}__{remote.replace('/', '__')}")
     stem, ext = os.path.splitext(name)
     k = 2
-    while name in taken and taken[name] != (identifier, remote):
+    while (name in taken and taken[name] != (identifier, remote)) or \
+            (name not in taken and os.path.exists(os.path.join(out, name))):
         name, k = f"{stem}-{k}{ext}", k + 1
     return name
 
@@ -333,7 +338,7 @@ def get(identifier, out=".", fmt=None, name=None, all_files=False, license="open
     entry = None
     taken = _owners(out)
     for f in files:
-        local = os.path.join(out, _local_name(identifier, f["name"], taken))
+        local = os.path.join(out, _local_name(identifier, f["name"], taken, out))
         taken[os.path.basename(local)] = (identifier, f["name"])
         url = f"{API}/download/{quote(identifier)}/{quote(f['name'])}"
         part = local + ".part"

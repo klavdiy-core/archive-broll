@@ -41,6 +41,18 @@ class ExternalReview(unittest.TestCase):
             with self.subTest(url=url):
                 self.assertEqual(ab.classify({"licenseurl": url}).kind, "unknown")
         self.assertEqual(ab.classify({"licenseurl": "creativecommons.org/licenses/by/4.0"}).kind, "open")
+        # Tsaplya: userinfo before the real host
+        self.assertEqual(ab.classify({"licenseurl": "https://creativecommons.org:x@evil.example/licenses/by/4.0/"}).kind,
+                         "unknown")
+
+    def test_a_file_on_disk_without_a_credit_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "clip.mp4"), "wb") as f:
+                f.write(b"the user's own clip")
+            e = ab.get("item-A", out=d, fmt="mp4", net=net)
+            self.assertNotEqual(e["file"], "clip.mp4")
+            with open(os.path.join(d, "clip.mp4"), "rb") as f:
+                self.assertEqual(f.read(), b"the user's own clip")
 
     def test_two_items_with_the_same_file_name_keep_both_files(self):
         with tempfile.TemporaryDirectory() as d:
