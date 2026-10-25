@@ -82,9 +82,9 @@ Formats (`-f`): `mp4` (h.264 first), `mp3`, `flac`, `ogg`. Default: mp4 for film
 - Only real Creative Commons addresses count (creativecommons.org, a known code such as `by-sa`, a known version, or
   the CC0 / Public Domain Mark pages). Anything else is `unknown` and refused by default (0.2.1: any address with
   `/licenses/` in it used to pass as open, even `example.org/licenses/proprietary/1.0` — found by an external
-  review, fixed in <commit>).
+  review, fixed in 1b6b71d).
 - Two items with the same file name no longer overwrite each other: the second is saved as `<identifier>__<name>`, and
-  `credits.json` points each credit at its own file (found by the same review, fixed in <commit>).
+  `credits.json` points each credit at its own file (found by the same review, fixed in 1b6b71d).
 
 archive.org can be slow (sometimes tens of KB/s). Use `info` first to see the size, and prefer the `512kb` copies for rough cuts.
 
