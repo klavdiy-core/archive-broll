@@ -79,6 +79,12 @@ Formats (`-f`): `mp4` (h.264 first), `mp3`, `flac`, `ogg`. Default: mp4 for film
 - The 78 rpm records (Great 78 Project) mostly state no license. Whether a recording is free to use depends on its year and your country (in the US, sound recordings published before 1926 are now public domain), and the composition has its own copyright. Check before you publish.
 - Live concerts (etree) are often CC BY-NC or carry a "trade-friendly" note: fine to share, not to sell. `--license nc` makes that choice explicit.
 - CC BY / BY-SA require the credit line. That is what `CREDITS.md` is for: paste it into the description or the end card.
+- Only real Creative Commons addresses count (creativecommons.org, a known code such as `by-sa`, a known version, or
+  the CC0 / Public Domain Mark pages). Anything else is `unknown` and refused by default (0.2.1: any address with
+  `/licenses/` in it used to pass as open, even `example.org/licenses/proprietary/1.0` — found by an external
+  review, fixed in <commit>).
+- Two items with the same file name no longer overwrite each other: the second is saved as `<identifier>__<name>`, and
+  `credits.json` points each credit at its own file (found by the same review, fixed in <commit>).
 
 archive.org can be slow (sometimes tens of KB/s). Use `info` first to see the size, and prefer the `512kb` copies for rough cuts.
 

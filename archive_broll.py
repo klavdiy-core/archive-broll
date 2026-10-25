@@ -18,7 +18,7 @@ import urllib.request
 from dataclasses import dataclass
 from urllib.parse import quote, urlencode
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 API = "https://archive.org"
 UA = f"archive-broll/{__version__} (+https://github.com/klavdiy-core/archive-broll)"
 
@@ -52,28 +52,39 @@ class License:
 
 # ---------- licenses ----------
 
+CC_HOSTS = {"creativecommons.org", "www.creativecommons.org"}
+CC_CODES = {"by", "by-sa", "by-nc", "by-nd", "by-nc-sa", "by-nc-nd"}
+CC_VERSIONS = {"1.0", "2.0", "2.5", "3.0", "4.0"}
+
 def classify(meta):
     url = meta.get("licenseurl") or ""
     if isinstance(url, list):
         url = url[0] if url else ""
-    u = url.lower().rstrip("/")
+    u = url.strip().lower()
     if u:
-        parts = u.split("/")
-        ver = parts[-1] if parts[-1].replace(".", "").isdigit() else ""
-        if "publicdomain/zero" in u:
-            return License(f"CC0 {ver}".strip(), url, "open")
-        if "publicdomain/mark" in u:
-            return License(f"Public Domain Mark {ver}".strip(), url, "open")
-        if "publicdomain" in u:
-            return License("Public Domain", url, "open")
-        if "/licenses/" in u:
-            code = u.split("/licenses/")[1].split("/")[0]
-            name = f"CC {code.upper()} {ver}".strip()
-            if "nd" in code.split("-"):
-                return License(name, url, "nd")
-            if "nc" in code.split("-"):
-                return License(name, url, "nc")
-            return License(name, url, "open")
+        # only real Creative Commons addresses with a known code and version count: «/licenses/not-a-real-license/4.0»
+        # and «example.org/licenses/proprietary/1.0» both came out «open» (external review, 25.10). Anything else is
+        # unknown, and the user decides with --license any.
+        from urllib.parse import urlparse
+        p = urlparse(u if "://" in u else "https://" + u)
+        host = p.netloc.split(":")[0]
+        segs = [s for s in p.path.split("/") if s]
+        if host in CC_HOSTS and segs == ["licenses", "publicdomain"]:
+            return License("Public Domain", url, "open")                 # the retired CC PD dedication, common on IA
+        if host in CC_HOSTS and len(segs) >= 3 and segs[2] in CC_VERSIONS:
+            kind_, code, ver = segs[0], segs[1], segs[2]
+            if kind_ == "publicdomain" and code == "zero":
+                return License(f"CC0 {ver}", url, "open")
+            if kind_ == "publicdomain" and code == "mark":
+                return License(f"Public Domain Mark {ver}", url, "open")
+            if kind_ == "licenses" and code in CC_CODES:
+                name = f"CC {code.upper()} {ver}"
+                if "nd" in code.split("-"):
+                    return License(name, url, "nd")
+                if "nc" in code.split("-"):
+                    return License(name, url, "nc")
+                return License(name, url, "open")
+        return License(f"unrecognised license address ({url.strip()})", url, "unknown")
     rights = meta.get("rights") or ""
     if isinstance(rights, list):
         rights = " ".join(rights)
@@ -274,6 +285,31 @@ def safe_name(name):
     return "_" + s if s.split(".")[0].upper() in RESERVED else (s or "_")
 
 
+def _owners(out):
+    """{local file name: (identifier, remote path)} from credits.json: who each file in the folder belongs to."""
+    path = os.path.join(out, "credits.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return {c["file"]: (c["identifier"], c.get("remote_path") or c.get("remote_file")) for c in json.load(f)}
+
+
+def _local_name(identifier, remote, taken):
+    """The plain file name, unless it already belongs to another item or another path of this one; then it is
+    namespaced by identifier (and path), with a number past that. Two items' clip.mp4 used to overwrite each other,
+    and credits.json pointed both at the survivor (external review, 25.10)."""
+    plain = safe_name(os.path.basename(remote))
+    owner = taken.get(plain)
+    if owner is None or owner == (identifier, remote) or owner == (identifier, os.path.basename(remote)):
+        return plain
+    name = safe_name(f"{identifier}__{remote.replace('/', '__')}")
+    stem, ext = os.path.splitext(name)
+    k = 2
+    while name in taken and taken[name] != (identifier, remote):
+        name, k = f"{stem}-{k}{ext}", k + 1
+    return name
+
+
 def creator_text(md):
     c = md.get("creator", "")
     return ", ".join(c) if isinstance(c, list) else str(c or "")
@@ -295,8 +331,10 @@ def get(identifier, out=".", fmt=None, name=None, all_files=False, license="open
         raise DownloadError(f"{identifier} has {len(files)} matching files; pick one with --file, or --all:\n  {names}")
     os.makedirs(out, exist_ok=True)
     entry = None
+    taken = _owners(out)
     for f in files:
-        local = os.path.join(out, safe_name(os.path.basename(f["name"])))
+        local = os.path.join(out, _local_name(identifier, f["name"], taken))
+        taken[os.path.basename(local)] = (identifier, f["name"])
         url = f"{API}/download/{quote(identifier)}/{quote(f['name'])}"
         part = local + ".part"
         _stream(url, part, net)
@@ -318,6 +356,7 @@ def get(identifier, out=".", fmt=None, name=None, all_files=False, license="open
             "item_url": f"{API}/details/{identifier}",
             "file": os.path.basename(local),
             "remote_file": os.path.basename(f["name"]),
+            "remote_path": f["name"],
             "file_url": url,
             "format": f.get("format"),
             "length_s": f.get("length"),
