@@ -18,7 +18,7 @@ import urllib.request
 from dataclasses import dataclass
 from urllib.parse import quote, urlencode
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 API = "https://archive.org"
 UA = f"archive-broll/{__version__} (+https://github.com/klavdiy-core/archive-broll)"
 
