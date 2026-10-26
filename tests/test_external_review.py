@@ -41,7 +41,7 @@ class ExternalReview(unittest.TestCase):
             with self.subTest(url=url):
                 self.assertEqual(ab.classify({"licenseurl": url}).kind, "unknown")
         self.assertEqual(ab.classify({"licenseurl": "creativecommons.org/licenses/by/4.0"}).kind, "open")
-        # Tsaplya: userinfo before the real host
+        # a second review: userinfo before the real host
         self.assertEqual(ab.classify({"licenseurl": "https://creativecommons.org:x@evil.example/licenses/by/4.0/"}).kind,
                          "unknown")
 

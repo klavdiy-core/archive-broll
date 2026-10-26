@@ -67,7 +67,7 @@ def classify(meta):
         # unknown, and the user decides with --license any.
         from urllib.parse import urlparse
         p = urlparse(u if "://" in u else "https://" + u)
-        host = p.hostname or ""          # not netloc.split(":"): «creativecommons.org:x@evil.example» (Tsaplya)
+        host = p.hostname or ""          # not netloc.split(":"): «creativecommons.org:x@evil.example» (a second review)
         segs = [s for s in p.path.split("/") if s]
         if host in CC_HOSTS and segs == ["licenses", "publicdomain"]:
             return License("Public Domain", url, "open")                 # the retired CC PD dedication, common on IA
@@ -305,7 +305,7 @@ def _local_name(identifier, remote, taken, out="."):
     if owner == (identifier, remote) or owner == (identifier, os.path.basename(remote)):
         return plain
     # a file on disk with no credit (the user's own, or a lost credits.json) is somebody's too: never overwritten
-    # (Tsaplya's second review: «plain clip.mp4 OVERWRITTEN»)
+    # (a second review: «plain clip.mp4 OVERWRITTEN»)
     name = safe_name(f"{identifier}__{remote.replace('/', '__')}")
     stem, ext = os.path.splitext(name)
     k = 2
